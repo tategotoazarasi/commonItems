@@ -1,7 +1,7 @@
 #include "ModParser.h"
 
-#include <external/json/single_include/nlohmann/json.hpp>
-#include <external/json/single_include/nlohmann/json_fwd.hpp>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <fstream>
 
 #include "../CommonFunctions.h"

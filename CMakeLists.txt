@@ -1,38 +1,38 @@
 cmake_minimum_required(VERSION 3.25)
-project(CommonItemsTests)
+project(commonItems VERSION 1.0.0)
 
-# Include directories
-include_directories(.)
-if (PLATFORM STREQUAL "Linux")
-    include_directories(/usr/include)
-    link_directories(/usr/lib)
-endif (PLATFORM STREQUAL "Linux")
-
-# Set the compiler options
 set(CMAKE_CXX_STANDARD 23)
-set (UNICODE_DEFAULT OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-message("-- Configuring for platform: ${PLATFORM}")
+option(COVERAGE "Enable code coverage" OFF)
+
+message("-- Configuring for platform: ${CMAKE_SYSTEM_NAME}")
 message("-- Code coverage enabled: ${COVERAGE}")
-if (PLATFORM STREQUAL "Windows")
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	set(UNICODE_DEFAULT OFF)
 	ADD_DEFINITIONS(-DUNICODE -D_UNICODE -DWINDOWS)
-elseif (PLATFORM STREQUAL "Linux")
-    #set(CMAKE_CXX_CLANG_TIDY clang-tidy -checks=-*,readability-*)
-	if (COVERAGE STREQUAL true)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	if (COVERAGE)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -fprofile-arcs -ftest-coverage -Wno-deprecated-declarations -Wno-unknown-pragmas")
 		set(CMAKE_CXX_OUTPUT_EXTENSION_REPLACE ON)
-	else (COVERAGE STREQUAL false)
+	else()
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wno-deprecated-declarations -Wno-unknown-pragmas")
-	endif (COVERAGE STREQUAL true)
-endif (PLATFORM STREQUAL "Windows")
+	endif()
+endif()
+
+find_package(nlohmann_json REQUIRED)
+find_package(GTest REQUIRED)
+
+include_directories(.)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	include_directories(/usr/include)
+	link_directories(/usr/lib)
+endif()
 
 # Create OBJECT_DIR variable
-set(OBJECT_DIR ${CMAKE_BINARY_DIR}/CMakeFiles/CommonItemsTests.dir)
+set(OBJECT_DIR ${CMAKE_BINARY_DIR}/CMakeFiles/commonItemsTests.dir)
 message("-- Object files will be output to: ${OBJECT_DIR}")
-
-include_directories(../external/googletest/googletest/include/gtest)
-include_directories(../external/googletest/googlemock/include/gmock)
-add_subdirectory("external/googletest" "googletest")
 
 ################################################################################
 # Source groups
@@ -45,11 +45,11 @@ set(COMMON_SOURCES ${COMMON_SOURCES} "ConverterVersion.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "Date.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "GameVersion.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "iconvlite.cpp")
-if (PLATFORM STREQUAL "Windows")
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	set(COMMON_SOURCES ${COMMON_SOURCES} "WinUtils.cpp")
-elseif (PLATFORM STREQUAL "Linux")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(COMMON_SOURCES ${COMMON_SOURCES} "LinuxUtils.cpp")
-endif (PLATFORM STREQUAL "Windows")
+endif()
 set(COMMON_SOURCES ${COMMON_SOURCES} "Log.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "OSCommonLayer.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "Parser.cpp")
@@ -61,22 +61,76 @@ set(COMMON_SOURCES ${COMMON_SOURCES} "ModLoader/ModFilesystem.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "ModLoader/ModLoader.cpp")
 set(COMMON_SOURCES ${COMMON_SOURCES} "ModLoader/ModParser.cpp")
 add_library(commonLib
-	${COMMON_SOURCES}
-)
+            ${COMMON_SOURCES}
+            )
+add_library(commonItems::commonItems ALIAS commonLib)
+
+target_include_directories(commonLib
+                           PUBLIC
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Localization>
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ModLoader>
+                           $<INSTALL_INTERFACE:include>
+                           )
 
 add_subdirectory(external/zip SYSTEM PRIVATE EXCLUDE_FROM_ALL)
 get_target_property(lib_include_dirs zip INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(commonLib SYSTEM PRIVATE ${lib_include_dirs})
 target_link_libraries(commonLib PRIVATE zip)
 
-if (PLATFORM STREQUAL "Windows")
+target_link_libraries(commonLib PUBLIC nlohmann_json::nlohmann_json)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	target_compile_options(commonLib PRIVATE /permissive /W4 /w14242 /w14254 /w14263 /w14265 /w14287 /we4289 /w14296 /w14311 /w14545 /w14546
-	    /w14547 /w14549 /w14555 /w14619 /w14640 /w14826 /w14905 /w14906 /w14928 /external:anglebrackets /external:W0 /WX)
-elseif (PLATFORM STREQUAL "Linux")
-endif (PLATFORM STREQUAL "Windows")
+	                       /w14547 /w14549 /w14555 /w14619 /w14640 /w14826 /w14905 /w14906 /w14928 /external:anglebrackets /external:W0 /WX)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+endif()
+
+file(GLOB_RECURSE PUBLIC_HEADERS
+     "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+     "${CMAKE_CURRENT_SOURCE_DIR}/Localization/*.h"
+     "${CMAKE_CURRENT_SOURCE_DIR}/ModLoader/*.h"
+     )
+
+include(GNUInstallDirs)
+
+install(TARGETS commonLib zip
+        EXPORT commonItemsTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+install(FILES ${PUBLIC_HEADERS}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/commonItems
+        )
+install(EXPORT commonItemsTargets
+        FILE commonItemsTargets.cmake
+        NAMESPACE commonItems::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/commonItems
+        )
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+		"${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfigVersion.cmake"
+		VERSION ${PROJECT_VERSION}
+		COMPATIBILITY AnyNewerVersion
+		)
+install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/commonItems
+        )
+configure_package_config_file(
+		"cmake/commonItemsConfig.cmake.in"
+		"${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfig.cmake"
+		INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/commonItems
+		)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfig.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/commonItems
+        )
+export(PACKAGE commonItems)
 
 set(tests
-	"tests/test_main.cpp"
+    "tests/test_main.cpp"
     "tests/ColorTests.cpp"
     "tests/CommonFunctionsTests.cpp"
     "tests/CommonRegexesTests.cpp"
@@ -86,87 +140,51 @@ set(tests
     "tests/GameVersionTests.cpp"
     "tests/iconvliteTests.cpp"
     "tests/LogTests.cpp"
-	"tests/ModFilesystemTests.cpp"
+    "tests/ModFilesystemTests.cpp"
     "tests/ModLoaderTests.cpp"
     "tests/ModParserTests.cpp"
     "tests/OSCompatibilityLayerTests.cpp"
     "tests/ParserHelperTests.cpp"
     "tests/ParserTests.cpp"
     "tests/StringUtilsTests.cpp"
-	"tests/Localization/LocalizationBlockTests.cpp"
-	"tests/Localization/LocalizationDatabaseTests.cpp"
-)
+    "tests/Localization/LocalizationBlockTests.cpp"
+    "tests/Localization/LocalizationDatabaseTests.cpp"
+    )
 source_group("tests" FILES ${tests})
 
+add_executable(commonItemsTests ${tests})
 
-################################################################################
-# Target
-################################################################################
-add_executable(${PROJECT_NAME} ${tests})
-target_link_libraries(${PROJECT_NAME} commonLib)
-if (PLATFORM STREQUAL "Windows")
-	target_compile_options(${PROJECT_NAME} PRIVATE /permissive /W4 /w14242 /w14254 /w14263 /w14265 /w14287 /we4289 /w14296 /w14311 /w14545 /w14546
-	    /w14547 /w14549 /w14555 /w14619 /w14640 /w14826 /w14905 /w14906 /w14928 /external:anglebrackets /external:W0 /WX)
-elseif (PLATFORM STREQUAL "Linux")
-endif (PLATFORM STREQUAL "Windows")
+target_link_libraries(commonItemsTests
+                      PRIVATE
+                      commonLib
+                      GTest::gtest
+                      GTest::gtest_main
+                      GTest::gmock
+                      )
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	target_compile_options(commonItemsTests PRIVATE /permissive /W4 /w14242 /w14254 /w14263 /w14265 /w14287 /we4289 /w14296 /w14311 /w14545 /w14546
+	                       /w14547 /w14549 /w14555 /w14619 /w14640 /w14826 /w14905 /w14906 /w14928 /external:anglebrackets /external:W0 /WX)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+endif()
 
-################################################################################
-# Test Files
-################################################################################
 file(COPY "tests/TestFiles/" DESTINATION "./")
-
-
-################################
-# Coverage
-################################
-if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-if (COVERAGE STREQUAL true)
-	add_custom_target(lcov
-		COMMAND mkdir -p lcoverage
-	)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND COVERAGE)
+	add_custom_target(lcov COMMAND mkdir -p lcoverage)
 	add_custom_command(TARGET lcov
-		COMMAND echo "=================== LCOV ===================="
-		COMMAND echo "-- Passing lcov tool under code coverage"
-		COMMAND lcov --c --d CMakeFiles/commonLib.dir --o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/11/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/11/bits/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/11/ext/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/x86_64-linux-gnu/c++/11/bits/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/12/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/12/bits/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/12/ext/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/x86_64-linux-gnu/c++/12/bits/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/14/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/14/bits/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/14/ext/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "/usr/include/x86_64-linux-gnu/c++/14/bits/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "*/commonItems/external/googletest/googlemock/include/gmock/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "*/commonItems/external/googletest/googlemock/include/gmock/internal/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "*/commonItems/external/googletest/googletest/include/gtest/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "*/commonItems/external/googletest/googletest/include/gtest/internal/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND lcov --remove lcoverage/coverage.info "*/commonItems/external/json/single_include/nlohmann/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-		COMMAND echo "-- Generating HTML output files"
-		COMMAND genhtml lcoverage/coverage.info --output-directory lcoverage --ignore-errors inconsistent,inconsistent,unused,unused
-	)
-
-	# Make sure to clean up the coverage folder
+	                   COMMAND echo "=================== LCOV ===================="
+	                   COMMAND echo "-- Passing lcov tool under code coverage"
+	                   COMMAND lcov --c --d CMakeFiles/commonLib.dir --o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
+	                   COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
+	                   COMMAND echo "-- Generating HTML output files"
+	                   COMMAND genhtml lcoverage/coverage.info --output-directory lcoverage --ignore-errors inconsistent,inconsistent,unused,unused
+	                   )
 	set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES gcoverage)
-
-	# Create the clean target. This cleans the build as well as generated 
-	# .gcda and .gcno files.
 	add_custom_target(init
-		COMMAND ${CMAKE_MAKE_PROGRAM} clean
-		COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcno
-		COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcda
-		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-	)
-endif (COVERAGE STREQUAL true)
-endif (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-
-################################
-# Unit Tests
-################################
+	                  COMMAND ${CMAKE_MAKE_PROGRAM} clean
+	                  COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcno
+	                  COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcda
+	                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	                  )
+endif()
 enable_testing()
-# Link test executable against gtest & gtest_main
-target_link_libraries(${PROJECT_NAME} gtest gtest_main gmock )
-add_test( runUnitTests ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME} )
+add_test( NAME runUnitTests COMMAND commonItemsTests )
