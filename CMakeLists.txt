@@ -1,8 +1,26 @@
 cmake_minimum_required(VERSION 3.25)
-project(commonItems VERSION 1.0.0)
+project(commonItems)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+
+FetchContent_Declare(
+		GTest
+		GIT_REPOSITORY https://github.com/google/googletest.git
+		GIT_TAG v1.17.0
+		)
+FetchContent_Declare(
+		nlohmann_json
+		GIT_REPOSITORY https://github.com/nlohmann/json.git
+		GIT_TAG v3.12.0
+		)
+FetchContent_Declare(
+		zip
+		GIT_REPOSITORY https://github.com/kuba--/zip.git
+		GIT_TAG v0.3.5
+		)
 
 option(COVERAGE "Enable code coverage" OFF)
 
@@ -12,17 +30,25 @@ message("-- Code coverage enabled: ${COVERAGE}")
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	set(UNICODE_DEFAULT OFF)
 	ADD_DEFINITIONS(-DUNICODE -D_UNICODE -DWINDOWS)
+
+	# Add warning flags for MSVC here if needed for all configs
+
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	# Common flags for all builds on Linux
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-deprecated-declarations -Wno-unknown-pragmas")
+
+	# Per-configuration flags
+	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
+
+	# Coverage flags (append only if enabled, typically used with Debug builds)
 	if (COVERAGE)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -fprofile-arcs -ftest-coverage -Wno-deprecated-declarations -Wno-unknown-pragmas")
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
 		set(CMAKE_CXX_OUTPUT_EXTENSION_REPLACE ON)
-	else()
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wno-deprecated-declarations -Wno-unknown-pragmas")
 	endif()
 endif()
 
-find_package(nlohmann_json REQUIRED)
-find_package(GTest REQUIRED)
+FetchContent_MakeAvailable(GTest nlohmann_json zip)
 
 include_directories(.)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -30,7 +56,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	link_directories(/usr/lib)
 endif()
 
-# Create OBJECT_DIR variable
 set(OBJECT_DIR ${CMAKE_BINARY_DIR}/CMakeFiles/commonItemsTests.dir)
 message("-- Object files will be output to: ${OBJECT_DIR}")
 
@@ -73,12 +98,12 @@ target_include_directories(commonLib
                            $<INSTALL_INTERFACE:include>
                            )
 
-add_subdirectory(external/zip SYSTEM PRIVATE EXCLUDE_FROM_ALL)
-get_target_property(lib_include_dirs zip INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories(commonLib SYSTEM PRIVATE ${lib_include_dirs})
-target_link_libraries(commonLib PRIVATE zip)
-
-target_link_libraries(commonLib PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(commonLib
+                      PRIVATE
+                      zip
+                      PUBLIC
+                      nlohmann_json::nlohmann_json
+                      )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	target_compile_options(commonLib PRIVATE /permissive /W4 /w14242 /w14254 /w14263 /w14265 /w14287 /we4289 /w14296 /w14311 /w14545 /w14546
@@ -93,8 +118,7 @@ file(GLOB_RECURSE PUBLIC_HEADERS
      )
 
 include(GNUInstallDirs)
-
-install(TARGETS commonLib zip
+install(TARGETS commonLib zip nlohmann_json
         EXPORT commonItemsTargets
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -110,15 +134,7 @@ install(EXPORT commonItemsTargets
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/commonItems
         )
 include(CMakePackageConfigHelpers)
-write_basic_package_version_file(
-		"${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfigVersion.cmake"
-		VERSION ${PROJECT_VERSION}
-		COMPATIBILITY AnyNewerVersion
-		)
-install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfigVersion.cmake"
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/commonItems
-        )
+
 configure_package_config_file(
 		"cmake/commonItemsConfig.cmake.in"
 		"${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfig.cmake"
