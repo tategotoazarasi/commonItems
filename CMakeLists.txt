@@ -4,23 +4,50 @@ project(commonItems)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Allow including this project as a subdirectory without forcing tests
+option(BUILD_TESTING "Build tests" OFF)
+if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+	set(BUILD_TESTING ON)
+endif ()
+
 include(FetchContent)
 
-FetchContent_Declare(
-		GTest
-		GIT_REPOSITORY https://github.com/google/googletest.git
-		GIT_TAG v1.17.0
-		)
-FetchContent_Declare(
-		nlohmann_json
-		GIT_REPOSITORY https://github.com/nlohmann/json.git
-		GIT_TAG v3.12.0
-		)
-FetchContent_Declare(
-		zip
-		GIT_REPOSITORY https://github.com/kuba--/zip.git
-		GIT_TAG v0.3.5
-		)
+# --- Dependencies ---
+
+# nlohmann_json
+find_package(nlohmann_json 3.12.0 QUIET)
+if (NOT nlohmann_json_FOUND)
+	FetchContent_Declare(
+			nlohmann_json
+			GIT_REPOSITORY https://github.com/nlohmann/json.git
+			GIT_TAG v3.12.0
+			)
+	FetchContent_MakeAvailable(nlohmann_json)
+endif ()
+
+# zip
+find_package(zip 0.3.5 QUIET)
+if (NOT zip_FOUND)
+	FetchContent_Declare(
+			zip
+			GIT_REPOSITORY https://github.com/kuba--/zip.git
+			GIT_TAG v0.3.5
+			)
+	FetchContent_MakeAvailable(zip)
+endif ()
+
+# GTest (Only needed for tests)
+if (BUILD_TESTING)
+	find_package(GTest 1.17.0 QUIET)
+	if (NOT GTest_FOUND)
+		FetchContent_Declare(
+				GTest
+				GIT_REPOSITORY https://github.com/google/googletest.git
+				GIT_TAG v1.17.0
+				)
+		FetchContent_MakeAvailable(GTest)
+	endif ()
+endif ()
 
 option(COVERAGE "Enable code coverage" OFF)
 
@@ -48,16 +75,11 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	endif()
 endif()
 
-FetchContent_MakeAvailable(GTest nlohmann_json zip)
-
 include_directories(.)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	include_directories(/usr/include)
 	link_directories(/usr/lib)
 endif()
-
-set(OBJECT_DIR ${CMAKE_BINARY_DIR}/CMakeFiles/commonItemsTests.dir)
-message("-- Object files will be output to: ${OBJECT_DIR}")
 
 ################################################################################
 # Source groups
@@ -118,7 +140,17 @@ file(GLOB_RECURSE PUBLIC_HEADERS
      )
 
 include(GNUInstallDirs)
-install(TARGETS commonLib zip nlohmann_json
+
+# Only install dependencies if we built them (not found via find_package), to ensure they are available in the export set
+set(INSTALL_TARGETS commonLib)
+if (NOT nlohmann_json_FOUND)
+	list(APPEND INSTALL_TARGETS nlohmann_json)
+endif ()
+if (NOT zip_FOUND)
+	list(APPEND INSTALL_TARGETS zip)
+endif ()
+
+install(TARGETS ${INSTALL_TARGETS}
         EXPORT commonItemsTargets
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -145,62 +177,67 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/commonItemsConfig.cmake"
         )
 export(PACKAGE commonItems)
 
-set(tests
-    "tests/test_main.cpp"
-    "tests/ColorTests.cpp"
-    "tests/CommonFunctionsTests.cpp"
-    "tests/CommonRegexesTests.cpp"
-    "tests/ConvenientParserTests.cpp"
-    "tests/ConverterVersionTests.cpp"
-    "tests/DateTests.cpp"
-    "tests/GameVersionTests.cpp"
-    "tests/iconvliteTests.cpp"
-    "tests/LogTests.cpp"
-    "tests/ModFilesystemTests.cpp"
-    "tests/ModLoaderTests.cpp"
-    "tests/ModParserTests.cpp"
-    "tests/OSCompatibilityLayerTests.cpp"
-    "tests/ParserHelperTests.cpp"
-    "tests/ParserTests.cpp"
-    "tests/StringUtilsTests.cpp"
-    "tests/Localization/LocalizationBlockTests.cpp"
-    "tests/Localization/LocalizationDatabaseTests.cpp"
-    )
-source_group("tests" FILES ${tests})
+if (BUILD_TESTING)
+	set(OBJECT_DIR ${CMAKE_BINARY_DIR}/CMakeFiles/commonItemsTests.dir)
+	message("-- Object files will be output to: ${OBJECT_DIR}")
 
-add_executable(commonItemsTests ${tests})
+	set(tests
+	    "tests/test_main.cpp"
+	    "tests/ColorTests.cpp"
+	    "tests/CommonFunctionsTests.cpp"
+	    "tests/CommonRegexesTests.cpp"
+	    "tests/ConvenientParserTests.cpp"
+	    "tests/ConverterVersionTests.cpp"
+	    "tests/DateTests.cpp"
+	    "tests/GameVersionTests.cpp"
+	    "tests/iconvliteTests.cpp"
+	    "tests/LogTests.cpp"
+	    "tests/ModFilesystemTests.cpp"
+	    "tests/ModLoaderTests.cpp"
+	    "tests/ModParserTests.cpp"
+	    "tests/OSCompatibilityLayerTests.cpp"
+	    "tests/ParserHelperTests.cpp"
+	    "tests/ParserTests.cpp"
+	    "tests/StringUtilsTests.cpp"
+	    "tests/Localization/LocalizationBlockTests.cpp"
+	    "tests/Localization/LocalizationDatabaseTests.cpp"
+	    )
+	source_group("tests" FILES ${tests})
 
-target_link_libraries(commonItemsTests
-                      PRIVATE
-                      commonLib
-                      GTest::gtest
-                      GTest::gtest_main
-                      GTest::gmock
-                      )
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	target_compile_options(commonItemsTests PRIVATE /permissive /W4 /w14242 /w14254 /w14263 /w14265 /w14287 /we4289 /w14296 /w14311 /w14545 /w14546
-	                       /w14547 /w14549 /w14555 /w14619 /w14640 /w14826 /w14905 /w14906 /w14928 /external:anglebrackets /external:W0 /WX)
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-endif()
+	add_executable(commonItemsTests ${tests})
 
-file(COPY "tests/TestFiles/" DESTINATION "./")
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND COVERAGE)
-	add_custom_target(lcov COMMAND mkdir -p lcoverage)
-	add_custom_command(TARGET lcov
-	                   COMMAND echo "=================== LCOV ===================="
-	                   COMMAND echo "-- Passing lcov tool under code coverage"
-	                   COMMAND lcov --c --d CMakeFiles/commonLib.dir --o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-	                   COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
-	                   COMMAND echo "-- Generating HTML output files"
-	                   COMMAND genhtml lcoverage/coverage.info --output-directory lcoverage --ignore-errors inconsistent,inconsistent,unused,unused
-	                   )
-	set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES gcoverage)
-	add_custom_target(init
-	                  COMMAND ${CMAKE_MAKE_PROGRAM} clean
-	                  COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcno
-	                  COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcda
-	                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-	                  )
-endif()
-enable_testing()
-add_test( NAME runUnitTests COMMAND commonItemsTests )
+	target_link_libraries(commonItemsTests
+	                      PRIVATE
+	                      commonLib
+	                      GTest::gtest
+	                      GTest::gtest_main
+	                      GTest::gmock
+	                      )
+	if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+		target_compile_options(commonItemsTests PRIVATE /permissive /W4 /w14242 /w14254 /w14263 /w14265 /w14287 /we4289 /w14296 /w14311 /w14545 /w14546
+		                       /w14547 /w14549 /w14555 /w14619 /w14640 /w14826 /w14905 /w14906 /w14928 /external:anglebrackets /external:W0 /WX)
+	elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	endif ()
+
+	file(COPY "tests/TestFiles/" DESTINATION "./")
+	if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND COVERAGE)
+		add_custom_target(lcov COMMAND mkdir -p lcoverage)
+		add_custom_command(TARGET lcov
+		                   COMMAND echo "=================== LCOV ===================="
+		                   COMMAND echo "-- Passing lcov tool under code coverage"
+		                   COMMAND lcov --c --d CMakeFiles/commonLib.dir --o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
+		                   COMMAND lcov --remove lcoverage/coverage.info "/usr/include/c++/*" -o lcoverage/coverage.info --ignore-errors inconsistent,inconsistent,unused,unused
+		                   COMMAND echo "-- Generating HTML output files"
+		                   COMMAND genhtml lcoverage/coverage.info --output-directory lcoverage --ignore-errors inconsistent,inconsistent,unused,unused
+		                   )
+		set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES gcoverage)
+		add_custom_target(init
+		                  COMMAND ${CMAKE_MAKE_PROGRAM} clean
+		                  COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcno
+		                  COMMAND rm -f ${TEST_OUTPUT_DIRECTORY}/*.gcda
+		                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		                  )
+	endif ()
+	enable_testing()
+	add_test(NAME runUnitTests COMMAND commonItemsTests)
+endif ()
